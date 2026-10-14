@@ -1343,7 +1343,7 @@ class _PlayerViewState extends State<PlayerView> {
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            isLineActive && _isPlaying ? Icons.Graphic_eq_rounded : Icons.play_arrow_rounded,
+                            isLineActive && _isPlaying ? Icons.graphic_eq_rounded : Icons.play_arrow_rounded,
                             size: 17,
                             color: isLineActive ? Colors.white : const Color(0xFF94A3B8),
                           ),
@@ -1702,3 +1702,4 @@ class VocabularyListView extends StatelessWidget {
     );
   }
 }
+
