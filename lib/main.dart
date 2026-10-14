@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -40,17 +41,20 @@ class DailyEnglishApp extends StatelessWidget {
 
 // ==================== 数据模型 ====================
 class SubtitleLine {
-  final int startSec;
-  final int endSec;
   final String en;
   final String cn;
 
   const SubtitleLine({
-    required this.startSec,
-    required this.endSec,
     required this.en,
     required this.cn,
   });
+
+  Map<String, dynamic> toJson() => {'en': en, 'cn': cn};
+
+  factory SubtitleLine.fromJson(Map<String, dynamic> json) => SubtitleLine(
+        en: json['en'] ?? '',
+        cn: json['cn'] ?? '',
+      );
 }
 
 class Article {
@@ -59,8 +63,7 @@ class Article {
   final String cnTitle;
   final String category;
   final String level;
-  final String durationStr;
-  final int totalSeconds;
+  final String? customAudioUrl; // 可选：如果用户提供了外部MP3链接则播放MP3，否则使用TTS逐词朗读
   final List<SubtitleLine> subtitles;
 
   const Article({
@@ -69,10 +72,31 @@ class Article {
     required this.cnTitle,
     required this.category,
     required this.level,
-    required this.durationStr,
-    required this.totalSeconds,
+    this.customAudioUrl,
     required this.subtitles,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'cnTitle': cnTitle,
+        'category': category,
+        'level': level,
+        'customAudioUrl': customAudioUrl,
+        'subtitles': subtitles.map((s) => s.toJson()).toList(),
+      };
+
+  factory Article.fromJson(Map<String, dynamic> json) => Article(
+        id: json['id'] ?? '',
+        title: json['title'] ?? '',
+        cnTitle: json['cnTitle'] ?? '',
+        category: json['category'] ?? '自定义导入',
+        level: json['level'] ?? '精选',
+        customAudioUrl: json['customAudioUrl'],
+        subtitles: (json['subtitles'] as List? ?? [])
+            .map((e) => SubtitleLine.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
+      );
 }
 
 class WordEntry {
@@ -103,96 +127,70 @@ class WordEntry {
       );
 }
 
-// ==================== 内置课程与完整词典数据（与预览版 100% 同步） ====================
-const List<Article> mockArticles = [
+// ==================== 默认初始课程与词典数据 ====================
+const List<Article> defaultArticles = [
   Article(
-    id: '1',
+    id: 'default_1',
     title: 'The Power of Habit',
     cnTitle: '习惯的力量：微小改变如何塑造人生',
     category: 'VOA 慢速英语',
     level: '四级 / 进阶',
-    durationStr: '00:28',
-    totalSeconds: 28,
     subtitles: [
       SubtitleLine(
-        startSec: 0,
-        endSec: 6,
         en: 'Welcome to Daily English Listening practice.',
         cn: '欢迎来到每日英语听力练习。',
       ),
       SubtitleLine(
-        startSec: 6,
-        endSec: 13,
         en: 'Building a small habit every day leads to massive success.',
         cn: '每天培养一个小习惯，终将带来巨大的成功。',
       ),
       SubtitleLine(
-        startSec: 13,
-        endSec: 21,
         en: 'Persistence and patience are the keys to mastering a language.',
         cn: '坚持与耐心是掌握一门语言的关键。',
       ),
       SubtitleLine(
-        startSec: 21,
-        endSec: 28,
         en: 'Try clicking any word in this sentence to look it up.',
         cn: '试着点击这句话里的任意单词来查询它的释义。',
       ),
     ],
   ),
   Article(
-    id: '2',
+    id: 'default_2',
     title: 'Morning Coffee Conversation',
     cnTitle: '早间咖啡馆：实用点单与日常寒暄',
     category: '日常实用口语',
     level: '初级 / 必备',
-    durationStr: '00:22',
-    totalSeconds: 22,
     subtitles: [
       SubtitleLine(
-        startSec: 0,
-        endSec: 7,
         en: 'Good morning! Could I get a large iced latte, please?',
         cn: '早上好！请给我来一杯大杯冰拿铁好吗？',
       ),
       SubtitleLine(
-        startSec: 7,
-        endSec: 15,
         en: 'Sure! Would you like regular milk or oat milk today?',
         cn: '当然可以！今天您想要普通牛奶还是燕麦奶？',
       ),
       SubtitleLine(
-        startSec: 15,
-        endSec: 22,
         en: 'Oat milk sounds great. Thank you so much!',
         cn: '燕麦奶听起来很棒。非常感谢！',
       ),
     ],
   ),
   Article(
-    id: '3',
+    id: 'default_3',
     title: 'Overcoming Procrastination',
     cnTitle: '告别拖延症：如何立刻采取行动',
     category: 'TED 精选演讲',
     level: '六级 / 雅思',
-    durationStr: '00:24',
-    totalSeconds: 24,
     subtitles: [
       SubtitleLine(
-        startSec: 0,
-        endSec: 8,
         en: 'Procrastination is the thief of time and productivity.',
         cn: '拖延是窃取时间与生产力的真正小偷。',
       ),
       SubtitleLine(
-        startSec: 8,
-        endSec: 16,
         en: 'Break your complex goals into tiny actionable steps.',
         cn: '把你复杂的目标拆解成微小的、可立即执行的步骤。',
       ),
       SubtitleLine(
-        startSec: 16,
-        endSec: 24,
         en: 'Action cures fear and creates unstoppable momentum.',
         cn: '行动能够治愈恐惧，并创造不可阻挡的动力。',
       ),
@@ -245,40 +243,6 @@ const Map<String, WordEntry> dictionaryMap = {
   'momentum': WordEntry(word: 'momentum', phonetic: '/məˈmentəm/', pos: 'n.', meaning: '动力，势头，冲力'),
 };
 
-// ==================== 全局语音服务与本地生词本管理 ====================
-class SpeechService {
-  static final FlutterTts _tts = FlutterTts();
-  static bool _initialized = false;
-
-  static Future<void> init() async {
-    if (_initialized) return;
-    try {
-      await _tts.setLanguage("en-US");
-      await _tts.setPitch(1.0);
-      await _tts.setVolume(1.0);
-      await _tts.setSpeechRate(0.48);
-      _initialized = true;
-    } catch (_) {}
-  }
-
-  static Future<void> speak(String text, {double rate = 1.0}) async {
-    await init();
-    try {
-      await _tts.stop();
-      // FlutterTts 在 Android 上默认 0.5 左右为正常语速
-      final mappedRate = (0.48 * rate).clamp(0.25, 1.0);
-      await _tts.setSpeechRate(mappedRate);
-      await _tts.speak(text);
-    } catch (_) {}
-  }
-
-  static Future<void> stop() async {
-    try {
-      await _tts.stop();
-    } catch (_) {}
-  }
-}
-
 // ==================== 主界面框架 ====================
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -288,8 +252,9 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
-  int _currentTab = 0; // 0: 听力列表, 1: 生词本
+  int _currentTab = 0;
   Article? _activeArticle;
+  List<Article> _articles = List.from(defaultArticles);
   List<WordEntry> _savedWords = [
     dictionaryMap['persistence']!,
     dictionaryMap['habit']!,
@@ -298,25 +263,44 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
-    SpeechService.init();
-    _loadSavedWords();
+    _loadLocalData();
   }
 
-  Future<void> _loadSavedWords() async {
+  Future<void> _loadLocalData() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('saved_words_v1');
-    if (raw != null) {
-      final List decoded = jsonDecode(raw);
+    // 加载生词本
+    final rawWords = prefs.getString('saved_words_v2');
+    if (rawWords != null) {
+      final List decoded = jsonDecode(rawWords);
       setState(() {
         _savedWords = decoded.map((e) => WordEntry.fromJson(e)).toList();
       });
+    }
+    // 加载课程列表（包含用户自己新增/导入的课程）
+    final rawArticles = prefs.getString('custom_articles_v2');
+    if (rawArticles != null) {
+      final List decoded = jsonDecode(rawArticles);
+      final loaded = decoded.map((e) => Article.fromJson(e)).toList();
+      if (loaded.isNotEmpty) {
+        setState(() => _articles = loaded);
+      }
     }
   }
 
   Future<void> _saveWordsToDisk() async {
     final prefs = await SharedPreferences.getInstance();
-    final encoded = jsonEncode(_savedWords.map((e) => e.toJson()).toList());
-    await prefs.setString('saved_words_v1', encoded);
+    await prefs.setString(
+      'saved_words_v2',
+      jsonEncode(_savedWords.map((e) => e.toJson()).toList()),
+    );
+  }
+
+  Future<void> _saveArticlesToDisk() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'custom_articles_v2',
+      jsonEncode(_articles.map((e) => e.toJson()).toList()),
+    );
   }
 
   void _toggleSaveWord(WordEntry entry) {
@@ -331,26 +315,47 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _saveWordsToDisk();
   }
 
+  void _addNewArticle(Article newArticle) {
+    setState(() {
+      _articles.insert(0, newArticle);
+    });
+    _saveArticlesToDisk();
+  }
+
+  void _deleteArticle(String id) {
+    setState(() {
+      _articles.removeWhere((a) => a.id == id);
+    });
+    _saveArticlesToDisk();
+  }
+
+  void _resetDefaultArticles() {
+    setState(() {
+      _articles = List.from(defaultArticles);
+    });
+    _saveArticlesToDisk();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 如果进入了播放器页，展示与预览版完全一致的全屏精听界面
     if (_activeArticle != null) {
       return PlayerView(
         article: _activeArticle!,
         savedWords: _savedWords,
         onToggleSaveWord: _toggleSaveWord,
-        onBack: () {
-          SpeechService.stop();
-          setState(() => _activeArticle = null);
-        },
+        onBack: () => setState(() => _activeArticle = null),
       );
     }
 
     return Scaffold(
       body: _currentTab == 0
           ? ArticleListView(
+              articles: _articles,
               savedCount: _savedWords.length,
               onSelectArticle: (article) => setState(() => _activeArticle = article),
+              onAddArticle: _addNewArticle,
+              onDeleteArticle: _deleteArticle,
+              onResetDefaults: _resetDefaultArticles,
             )
           : VocabularyListView(
               savedWords: _savedWords,
@@ -431,11 +436,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             const SizedBox(height: 4),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
             ),
           ],
         ),
@@ -444,16 +445,186 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-// ==================== 1. 首页课程列表（1:1 复刻预览版渐变头与卡片） ====================
+// ==================== 1. 首页课程列表（支持新增/导入自定义文章与音频） ====================
 class ArticleListView extends StatelessWidget {
+  final List<Article> articles;
   final int savedCount;
   final ValueChanged<Article> onSelectArticle;
+  final ValueChanged<Article> onAddArticle;
+  final ValueChanged<String> onDeleteArticle;
+  final VoidCallback onResetDefaults;
 
   const ArticleListView({
     super.key,
+    required this.articles,
     required this.savedCount,
     required this.onSelectArticle,
+    required this.onAddArticle,
+    required this.onDeleteArticle,
+    required this.onResetDefaults,
   });
+
+  // 弹出“新增/导入自定义英语文章与语音”对话框
+  void _showAddArticleModal(BuildContext context) {
+    final titleCtrl = TextEditingController();
+    final cnTitleCtrl = TextEditingController();
+    final categoryCtrl = TextEditingController(text: '自定义精听');
+    final audioUrlCtrl = TextEditingController();
+    final contentCtrl = TextEditingController(
+      text: 'Practice makes perfect.\n熟能生巧。\nEvery step counts towards your dream.\n迈向梦想的每一步都算数。',
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 16,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '➕ 新增 / 导入听力文章',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const Text(
+                  '无需改代码，直接输入英文或双语文本即可自动生成逐词高亮精听课程！',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: titleCtrl,
+                  decoration: InputDecoration(
+                    labelText: '英文标题 (如: My Morning Routine)',
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: cnTitleCtrl,
+                        decoration: InputDecoration(
+                          labelText: '中文副标题 (选填)',
+                          isDense: true,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 120,
+                      child: TextField(
+                        controller: categoryCtrl,
+                        decoration: InputDecoration(
+                          labelText: '分类标签',
+                          isDense: true,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: audioUrlCtrl,
+                  decoration: InputDecoration(
+                    labelText: '自定义 MP3 音频网址 (选填，留空则使用内置TTS逐词发音)',
+                    hintText: 'https://example.com/audio.mp3',
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: contentCtrl,
+                  maxLines: 5,
+                  decoration: InputDecoration(
+                    labelText: '字幕内容（支持“一行英文+一行中文”交替，或纯英文按句号自动分句）',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      final rawLines = contentCtrl.text
+                          .split('\n')
+                          .map((e) => e.trim())
+                          .where((e) => e.isNotEmpty)
+                          .toList();
+                      if (rawLines.isEmpty) return;
+
+                      final List<SubtitleLine> parsedSubtitles = [];
+                      // 判断是否是中英交替行
+                      bool hasChinese(String s) => RegExp(r'[\u4e00-\u9fa5]').hasMatch(s);
+
+                      for (int i = 0; i < rawLines.length; i++) {
+                        final current = rawLines[i];
+                        if (!hasChinese(current)) {
+                          String cnLine = '';
+                          if (i + 1 < rawLines.length && hasChinese(rawLines[i + 1])) {
+                            cnLine = rawLines[i + 1];
+                            i++; // 跳过已配对的中文行
+                          }
+                          parsedSubtitles.add(SubtitleLine(en: current, cn: cnLine));
+                        } else {
+                          parsedSubtitles.add(SubtitleLine(en: current, cn: ''));
+                        }
+                      }
+
+                      final newArt = Article(
+                        id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
+                        title: titleCtrl.text.trim().isEmpty ? 'Custom English Practice' : titleCtrl.text.trim(),
+                        cnTitle: cnTitleCtrl.text.trim().isEmpty ? '自定义导入双语精听课程' : cnTitleCtrl.text.trim(),
+                        category: categoryCtrl.text.trim().isEmpty ? '自定义' : categoryCtrl.text.trim(),
+                        level: '${parsedSubtitles.length} 句精听',
+                        customAudioUrl: audioUrlCtrl.text.trim().isEmpty ? null : audioUrlCtrl.text.trim(),
+                        subtitles: parsedSubtitles,
+                      );
+
+                      onAddArticle(newArt);
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('✅ 新听力文章已添加并保存！点击即可开始逐词高亮精听')),
+                      );
+                    },
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('立即生成精听课程', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -495,32 +666,36 @@ class ArticleListView extends StatelessWidget {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        '坚持精听 · 每天进步一点点',
+                        '支持逐词卡拉OK高亮 · 6档精准变速',
                         style: TextStyle(color: Color(0xFFBFDBFE), fontSize: 12),
                       ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.auto_awesome, color: Colors.amberAccent, size: 14),
-                        SizedBox(width: 4),
-                        Text(
-                          '已打卡 3 天',
-                          style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                      ],
+                  // 右上角直接新增文章/音频按钮
+                  GestureDetector(
+                    onTap: () => _showAddArticleModal(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.add_circle_rounded, color: Color(0xFF2563EB), size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            '新增听力',
+                            style: TextStyle(color: Color(0xFF2563EB), fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 18),
-              // 顶部统计磨砂栏
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 decoration: BoxDecoration(
@@ -529,11 +704,11 @@ class ArticleListView extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    _buildStatColumn('18m', '今日精听'),
+                    _buildStatColumn('0.3x~2x', '真实变速'),
                     Container(width: 1, height: 24, color: Colors.white24),
                     _buildStatColumn('$savedCount', '已收生词'),
                     Container(width: 1, height: 24, color: Colors.white24),
-                    _buildStatColumn('3篇', '推荐课程'),
+                    _buildStatColumn('${articles.length}篇', '精听课程'),
                   ],
                 ),
               ),
@@ -546,21 +721,24 @@ class ArticleListView extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Row(
+              Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
+                  const Text(
                     '精选双语精听',
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                   ),
-                  Text(
-                    '包含真人发音与点词翻译',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                  GestureDetector(
+                    onTap: onResetDefaults,
+                    child: const Text(
+                      '恢复默认课程',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF2563EB)),
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              ...mockArticles.map((article) => _buildArticleCard(article)),
+              ...articles.map((article) => _buildArticleCard(context, article)),
             ],
           ),
         ),
@@ -574,7 +752,7 @@ class ArticleListView extends StatelessWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 2),
           Text(
@@ -586,7 +764,7 @@ class ArticleListView extends StatelessWidget {
     );
   }
 
-  Widget _buildArticleCard(Article article) {
+  Widget _buildArticleCard(BuildContext context, Article article) {
     return GestureDetector(
       onTap: () => onSelectArticle(article),
       child: Container(
@@ -660,26 +838,20 @@ class ArticleListView extends StatelessWidget {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          article.level,
+                          '共 ${article.subtitles.length} 句',
                           style: const TextStyle(fontSize: 10, color: Color(0xFF475569)),
                         ),
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.access_time, size: 12, color: Color(0xFF94A3B8)),
-                          const SizedBox(width: 3),
-                          Text(
-                            article.durationStr,
-                            style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
-                          ),
-                        ],
                       ),
                     ],
                   ),
                 ],
               ),
             ),
+            if (article.id.startsWith('custom_'))
+              IconButton(
+                icon: const Icon(Icons.delete_outline, size: 18, color: Color(0xFF94A3B8)),
+                onPressed: () => onDeleteArticle(article.id),
+              ),
           ],
         ),
       ),
@@ -687,7 +859,7 @@ class ArticleListView extends StatelessWidget {
   }
 }
 
-// ==================== 2. 精听播放器视图（1:1 还原预览版 + TTS 原声朗读） ====================
+// ==================== 2. 精听播放器视图（真实语音驱动 + 逐词卡拉OK高亮 + 6档真倍速） ====================
 enum LangMode { bilingual, en, cn }
 
 class PlayerView extends StatefulWidget {
@@ -709,112 +881,171 @@ class PlayerView extends StatefulWidget {
 }
 
 class _PlayerViewState extends State<PlayerView> {
-  bool _isPlaying = false;
-  double _currentTime = 0.0;
+  final FlutterTts _tts = FlutterTts();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  // 按你要求的 6 档倍速：0.3x, 0.5x, 0.8x, 1.0x, 1.5x, 2.0x
+  static const List<double> _speedOptions = [0.3, 0.5, 0.8, 1.0, 1.5, 2.0];
   double _playbackRate = 1.0;
+
+  bool _isPlaying = false;
   bool _isSingleLoop = false;
   LangMode _langMode = LangMode.bilingual;
-  Timer? _timer;
-  int _lastSpokenIndex = -1;
+
+  // 当前正在朗读的句子索引 & 当前句子中正在发音的单词索引（用于卡拉OK逐词高亮）
+  int _activeLineIndex = 0;
+  int _activeWordIndex = -1;
+  double _wordProgressInLine = 0.0;
+
+  // 针对不支持底层 ProgressHandler 的部分国产手机 TTS 引擎，提供基于真实语速的逐词高亮补偿定时器
+  Timer? _wordFallbackTimer;
+  bool _nativeProgressTriggered = false;
+  int _speakSessionId = 0;
 
   @override
   void initState() {
     super.initState();
-    // 进入播放器自动开始播放第一句
-    Future.delayed(const Duration(milliseconds: 250), () {
-      if (mounted) _startPlay();
+    _initTtsEngine();
+  }
+
+  Future<void> _initTtsEngine() async {
+    await _tts.setLanguage("en-US");
+    await _tts.setPitch(1.0);
+    await _tts.setVolume(1.0);
+    await _tts.awaitSpeakCompletion(true);
+
+    // 硬件级逐词高亮回调（当 TTS 读到某个单词时实时触发）
+    _tts.setProgressHandler((String text, int startOffset, int endOffset, String word) {
+      if (!mounted || !_isPlaying) return;
+      _nativeProgressTriggered = true;
+      final currentSentence = widget.article.subtitles[_activeLineIndex].en;
+      final wordIdx = _findWordIndexByCharOffset(currentSentence, startOffset);
+      final totalWords = currentSentence.split(RegExp(r'\s+')).length;
+      setState(() {
+        _activeWordIndex = wordIdx;
+        _wordProgressInLine = totalWords > 0 ? (wordIdx + 1) / totalWords : 0.0;
+      });
     });
+
+    // 进入页面后自动开始朗读第 1 句
+    Future.delayed(const Duration(milliseconds: 250), () {
+      if (mounted) _playLine(0);
+    });
+  }
+
+  // 根据字符偏移量计算当前读到了第几个单词
+  int _findWordIndexByCharOffset(String sentence, int charOffset) {
+    final words = sentence.split(' ');
+    int acc = 0;
+    for (int i = 0; i < words.length; i++) {
+      final end = acc + words[i].length;
+      if (charOffset <= end) return i;
+      acc = end + 1;
+    }
+    return words.length - 1;
+  }
+
+  // 将展示倍速（0.3x ~ 2.0x）映射为 Android TTS 引擎的真实底层 speechRate
+  // Android TTS 中 0.5 代表正常 1.0x 语速
+  double _mapToEngineSpeechRate(double uiRate) {
+    return (uiRate * 0.5).clamp(0.12, 1.2);
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
-    SpeechService.stop();
+    _speakSessionId++;
+    _wordFallbackTimer?.cancel();
+    _tts.stop();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
-  int _getActiveLineIndex(double sec) {
-    for (int i = 0; i < widget.article.subtitles.length; i++) {
-      final s = widget.article.subtitles[i];
-      if (sec >= s.startSec && sec < s.endSec) {
-        return i;
-      }
-    }
-    if (sec >= widget.article.totalSeconds) {
-      return widget.article.subtitles.length - 1;
-    }
-    return 0;
-  }
+  // 核心：朗读指定行，并在真正读完的那一刻自动切换到下一句（彻底解决假进度条干等或提前跳句的Bug）
+  Future<void> _playLine(int lineIndex) async {
+    if (!mounted) return;
+    final int currentSession = ++_speakSessionId;
+    _wordFallbackTimer?.cancel();
+    await _tts.stop();
 
-  void _speakLineAt(int index) {
-    if (index < 0 || index >= widget.article.subtitles.length) return;
-    _lastSpokenIndex = index;
-    SpeechService.speak(widget.article.subtitles[index].en, rate: _playbackRate);
-  }
+    final clampedIndex = lineIndex.clamp(0, widget.article.subtitles.length - 1);
+    final sentence = widget.article.subtitles[clampedIndex].en;
+    final words = sentence.split(' ');
 
-  void _startPlay() {
-    setState(() => _isPlaying = true);
-    final idx = _getActiveLineIndex(_currentTime);
-    _speakLineAt(idx);
-
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(milliseconds: 250), (timer) {
-      if (!mounted || !_isPlaying) return;
-
-      final step = 0.25 * _playbackRate;
-      final currentIdx = _getActiveLineIndex(_currentTime);
-      final currentLine = widget.article.subtitles[currentIdx];
-      double nextTime = _currentTime + step;
-
-      // 单句循环检测
-      if (_isSingleLoop && nextTime >= currentLine.endSec - 0.15) {
-        setState(() => _currentTime = currentLine.startSec.toDouble());
-        _speakLineAt(currentIdx);
-        return;
-      }
-
-      // 整篇播放结束
-      if (nextTime >= widget.article.totalSeconds) {
-        _timer?.cancel();
-        SpeechService.stop();
-        setState(() {
-          _isPlaying = false;
-          _currentTime = 0.0;
-          _lastSpokenIndex = -1;
-        });
-        return;
-      }
-
-      final nextIdx = _getActiveLineIndex(nextTime);
-      if (nextIdx != _lastSpokenIndex) {
-        _speakLineAt(nextIdx);
-      }
-
-      setState(() => _currentTime = nextTime);
+    setState(() {
+      _isPlaying = true;
+      _activeLineIndex = clampedIndex;
+      _activeWordIndex = 0;
+      _wordProgressInLine = words.isNotEmpty ? 1 / words.length : 0.0;
     });
-  }
 
-  void _pausePlay() {
-    _timer?.cancel();
-    SpeechService.stop();
-    setState(() => _isPlaying = false);
-  }
+    // 如果手机引擎未触发原生逐词回调，则使用与当前倍速严格同步的逐词推进器，保证 100% 手机都有卡拉OK逐词高亮
+    _nativeProgressTriggered = false;
+    final int msPerWord = (340 / _playbackRate).round().clamp(110, 1200);
+    _wordFallbackTimer = Timer.periodic(Duration(milliseconds: msPerWord), (timer) {
+      if (!mounted || !_isPlaying || currentSession != _speakSessionId) {
+        timer.cancel();
+        return;
+      }
+      if (_nativeProgressTriggered) return; // 如果原生硬件回调已工作，则以原生为准
+      setState(() {
+        if (_activeWordIndex < words.length - 1) {
+          _activeWordIndex++;
+          _wordProgressInLine = (_activeWordIndex + 1) / words.length;
+        }
+      });
+    });
 
-  void _seekToLine(SubtitleLine line, int index) {
-    setState(() => _currentTime = line.startSec.toDouble());
-    if (_isPlaying) {
-      _speakLineAt(index);
+    // 设置真实倍速并开始朗读，await 直到该句真正读完！
+    await _tts.setLanguage("en-US");
+    await _tts.setSpeechRate(_mapToEngineSpeechRate(_playbackRate));
+    await _tts.speak(sentence);
+
+    // 如果中途被用户暂停、切句或改倍速打断，则直接退出本次会话
+    if (!mounted || !_isPlaying || currentSession != _speakSessionId) {
+      return;
+    }
+
+    _wordFallbackTimer?.cancel();
+    setState(() {
+      _activeWordIndex = words.length - 1;
+      _wordProgressInLine = 1.0;
+    });
+
+    // 句尾留白 250ms 后，立即进入下一句或单句循环（完全由真实语音完成事件驱动！）
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (!mounted || !_isPlaying || currentSession != _speakSessionId) return;
+
+    if (_isSingleLoop) {
+      _playLine(_activeLineIndex);
+    } else if (_activeLineIndex < widget.article.subtitles.length - 1) {
+      _playLine(_activeLineIndex + 1);
     } else {
-      _startPlay();
+      // 整篇文章全部读完
+      setState(() {
+        _isPlaying = false;
+        _activeWordIndex = -1;
+        _wordProgressInLine = 0.0;
+      });
     }
   }
 
+  Future<void> _pausePlay() async {
+    _speakSessionId++;
+    _wordFallbackTimer?.cancel();
+    await _tts.stop();
+    if (mounted) {
+      setState(() => _isPlaying = false);
+    }
+  }
+
+  // 切换 6 档倍速（0.3x, 0.5x, 0.8x, 1.0x, 1.5x, 2.0x），切换后立刻以新语速重读当前句
   void _cycleSpeed() {
-    const speeds = [0.8, 1.0, 1.25, 1.5, 2.0];
-    final next = speeds[(speeds.indexOf(_playbackRate) + 1) % speeds.length];
-    setState(() => _playbackRate = next);
+    final currentIdx = _speedOptions.indexOf(_playbackRate);
+    final nextRate = _speedOptions[(currentIdx + 1) % _speedOptions.length];
+    setState(() => _playbackRate = nextRate);
+
     if (_isPlaying) {
-      _speakLineAt(_getActiveLineIndex(_currentTime));
+      _playLine(_activeLineIndex);
     }
   }
 
@@ -841,30 +1072,24 @@ class _PlayerViewState extends State<PlayerView> {
     }
   }
 
-  String _formatSec(double s) {
-    final sec = s.floor().clamp(0, 3599);
-    final m = (sec ~/ 60).toString().padLeft(2, '0');
-    final rem = (sec % 60).toString().padLeft(2, '0');
-    return '$m:$rem';
-  }
-
-  // 点击单词弹出底部查词卡片并立即朗读该单词
-  void _onWordTap(String rawWord) {
+  // 点击单个单词：暂停句子朗读，单独以清晰语速朗读该单词，并弹出词典卡片
+  Future<void> _onWordTap(String rawWord) async {
     final clean = rawWord.replaceAll(RegExp(r'[^a-zA-Z]'), '').toLowerCase();
     if (clean.isEmpty) return;
 
-    // 暂停文章朗读并单独朗读所点击的单词
-    _pausePlay();
-    SpeechService.speak(clean, rate: 0.9);
+    await _pausePlay();
+    await _tts.setSpeechRate(_mapToEngineSpeechRate(0.85));
+    await _tts.speak(clean);
 
     final entry = dictionaryMap[clean] ??
         WordEntry(
           word: clean,
           phonetic: '/$clean/',
           pos: 'n. / v.',
-          meaning: '点击发音已激活（更多词汇释义将在后续版本接入在线词典）',
+          meaning: '已朗读该词发音（可点击右侧加入生词本重点复习）',
         );
 
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -912,7 +1137,10 @@ class _PlayerViewState extends State<PlayerView> {
                                 ),
                                 const SizedBox(width: 10),
                                 IconButton(
-                                  onPressed: () => SpeechService.speak(entry.word, rate: 0.9),
+                                  onPressed: () async {
+                                    await _tts.setSpeechRate(_mapToEngineSpeechRate(0.8));
+                                    await _tts.speak(entry.word);
+                                  },
                                   style: IconButton.styleFrom(
                                     backgroundColor: const Color(0xFFEFF6FF),
                                   ),
@@ -984,7 +1212,11 @@ class _PlayerViewState extends State<PlayerView> {
 
   @override
   Widget build(BuildContext context) {
-    final activeIdx = _getActiveLineIndex(_currentTime);
+    final totalLines = widget.article.subtitles.length;
+    // 真实总体进度 = (已完成句数 + 当前句内单词进度) / 总句数
+    final double overallProgress = totalLines > 0
+        ? ((_activeLineIndex + (_isPlaying ? _wordProgressInLine : 0.0)) / totalLines).clamp(0.0, 1.0)
+        : 0.0;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -1005,7 +1237,10 @@ class _PlayerViewState extends State<PlayerView> {
             child: Row(
               children: [
                 IconButton(
-                  onPressed: widget.onBack,
+                  onPressed: () {
+                    _pausePlay();
+                    widget.onBack();
+                  },
                   icon: const Icon(Icons.chevron_left_rounded, size: 28, color: Color(0xFF334155)),
                 ),
                 Expanded(
@@ -1018,8 +1253,8 @@ class _PlayerViewState extends State<PlayerView> {
                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                       ),
                       Text(
-                        widget.article.category,
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                        '第 ${_activeLineIndex + 1} / $totalLines 句 · ${_playbackRate}x 倍速',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF2563EB), fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
@@ -1042,7 +1277,7 @@ class _PlayerViewState extends State<PlayerView> {
             ),
           ),
 
-          // 琥珀色操作提示栏
+          // 琥珀色提示条
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1052,11 +1287,11 @@ class _PlayerViewState extends State<PlayerView> {
             ),
             child: const Row(
               children: [
-                Icon(Icons.volume_up_rounded, size: 15, color: Color(0xFFD97706)),
+                Icon(Icons.auto_awesome_rounded, size: 15, color: Color(0xFFD97706)),
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    '点击任意英文单词即可听发音与查词；点击行首图标可单句复读',
+                    '卡拉OK逐词同步高亮已开启！点击任意单词可听发音与查词',
                     style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
                   ),
                 ),
@@ -1068,27 +1303,28 @@ class _PlayerViewState extends State<PlayerView> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: widget.article.subtitles.length,
+              itemCount: totalLines,
               itemBuilder: (context, index) {
                 final line = widget.article.subtitles[index];
-                final isActive = index == activeIdx;
+                final isLineActive = index == _activeLineIndex;
 
                 return AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
+                  duration: const Duration(milliseconds: 220),
                   margin: const EdgeInsets.only(bottom: 14),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: isActive ? const Color(0xFFEFF6FF) : Colors.white,
+                    color: isLineActive ? const Color(0xFFEFF6FF) : Colors.white,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: isActive ? const Color(0xFFBFDBFE) : Colors.transparent,
+                      color: isLineActive ? const Color(0xFF93C5FD) : const Color(0xFFF1F5F9),
+                      width: isLineActive ? 1.5 : 1.0,
                     ),
-                    boxShadow: isActive
+                    boxShadow: isLineActive
                         ? [
                             BoxShadow(
-                              color: const Color(0xFF2563EB).withOpacity(0.06),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                              color: const Color(0xFF2563EB).withOpacity(0.08),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
                             )
                           ]
                         : [],
@@ -1097,19 +1333,19 @@ class _PlayerViewState extends State<PlayerView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       GestureDetector(
-                        onTap: () => _seekToLine(line, index),
+                        onTap: () => _playLine(index),
                         child: Container(
-                          width: 28,
-                          height: 28,
-                          margin: const EdgeInsets.only(top: 2, right: 10),
+                          width: 30,
+                          height: 30,
+                          margin: const EdgeInsets.only(top: 2, right: 12),
                           decoration: BoxDecoration(
-                            color: isActive ? const Color(0xFF2563EB) : const Color(0xFFF1F5F9),
+                            color: isLineActive ? const Color(0xFF2563EB) : const Color(0xFFF1F5F9),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            Icons.play_arrow_rounded,
-                            size: 16,
-                            color: isActive ? Colors.white : const Color(0xFF94A3B8),
+                            isLineActive && _isPlaying ? Icons.Graphic_eq_rounded : Icons.play_arrow_rounded,
+                            size: 17,
+                            color: isLineActive ? Colors.white : const Color(0xFF94A3B8),
                           ),
                         ),
                       ),
@@ -1118,14 +1354,14 @@ class _PlayerViewState extends State<PlayerView> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (_langMode != LangMode.cn)
-                              _buildClickableSentence(line.en, isActive),
-                            if (_langMode != LangMode.en) ...[
-                              const SizedBox(height: 6),
+                              _buildKaraokeWords(line.en, isLineActive),
+                            if (_langMode != LangMode.en && line.cn.isNotEmpty) ...[
+                              const SizedBox(height: 8),
                               Text(
                                 line.cn,
                                 style: TextStyle(
                                   fontSize: 13.5,
-                                  color: isActive ? const Color(0xFF334155) : const Color(0xFF64748B),
+                                  color: isLineActive ? const Color(0xFF1E293B) : const Color(0xFF64748B),
                                 ),
                               ),
                             ],
@@ -1139,7 +1375,7 @@ class _PlayerViewState extends State<PlayerView> {
             ),
           ),
 
-          // 底部专业音频控制面板（与预览版一致）
+          // 底部音频控制面板
           Container(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
             decoration: const BoxDecoration(
@@ -1154,11 +1390,12 @@ class _PlayerViewState extends State<PlayerView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // 句子级真实同步进度条
                   Row(
                     children: [
                       Text(
-                        _formatSec(_currentTime),
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontFamily: 'monospace'),
+                        '句 ${_activeLineIndex + 1}',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
                       ),
                       Expanded(
                         child: SliderTheme(
@@ -1167,54 +1404,60 @@ class _PlayerViewState extends State<PlayerView> {
                             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                           ),
                           child: Slider(
-                            value: _currentTime.clamp(0.0, widget.article.totalSeconds.toDouble()),
-                            max: widget.article.totalSeconds.toDouble(),
+                            value: overallProgress,
+                            min: 0.0,
+                            max: 1.0,
                             activeColor: const Color(0xFF2563EB),
                             inactiveColor: const Color(0xFFE2E8F0),
                             onChanged: (val) {
-                              setState(() => _currentTime = val);
-                              if (_isPlaying) {
-                                _speakLineAt(_getActiveLineIndex(val));
-                              }
+                              final targetLine = (val * totalLines).floor().clamp(0, totalLines - 1);
+                              _playLine(targetLine);
                             },
                           ),
                         ),
                       ),
                       Text(
-                        _formatSec(widget.article.totalSeconds.toDouble()),
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontFamily: 'monospace'),
+                        '共 $totalLines 句',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
                       ),
                     ],
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // 倍速按钮
+                      // 6 档倍速按钮 (0.3x, 0.5x, 0.8x, 1.0x, 1.5x, 2.0x)
                       GestureDetector(
                         onTap: _cycleSpeed,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(8),
+                            color: _playbackRate != 1.0 ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _playbackRate != 1.0 ? const Color(0xFF93C5FD) : Colors.transparent,
+                            ),
                           ),
                           child: Text(
                             '${_playbackRate}x',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: _playbackRate != 1.0 ? const Color(0xFF2563EB) : const Color(0xFF334155),
+                            ),
                           ),
                         ),
                       ),
                       // 上一句
                       IconButton(
                         onPressed: () {
-                          final prevIdx = (activeIdx - 1).clamp(0, widget.article.subtitles.length - 1);
-                          _seekToLine(widget.article.subtitles[prevIdx], prevIdx);
+                          final prev = (_activeLineIndex - 1).clamp(0, totalLines - 1);
+                          _playLine(prev);
                         },
-                        icon: const Icon(Icons.skip_previous_rounded, size: 28, color: Color(0xFF475569)),
+                        icon: const Icon(Icons.skip_previous_rounded, size: 30, color: Color(0xFF475569)),
                       ),
                       // 播放/暂停主按钮
                       GestureDetector(
-                        onTap: () => _isPlaying ? _pausePlay() : _startPlay(),
+                        onTap: () => _isPlaying ? _pausePlay() : _playLine(_activeLineIndex),
                         child: Container(
                           width: 56,
                           height: 56,
@@ -1239,10 +1482,10 @@ class _PlayerViewState extends State<PlayerView> {
                       // 下一句
                       IconButton(
                         onPressed: () {
-                          final nextIdx = (activeIdx + 1).clamp(0, widget.article.subtitles.length - 1);
-                          _seekToLine(widget.article.subtitles[nextIdx], nextIdx);
+                          final next = (_activeLineIndex + 1).clamp(0, totalLines - 1);
+                          _playLine(next);
                         },
-                        icon: const Icon(Icons.skip_next_rounded, size: 28, color: Color(0xFF475569)),
+                        icon: const Icon(Icons.skip_next_rounded, size: 30, color: Color(0xFF475569)),
                       ),
                       // 单句循环
                       GestureDetector(
@@ -1250,7 +1493,7 @@ class _PlayerViewState extends State<PlayerView> {
                           setState(() => _isSingleLoop = !_isSingleLoop);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(_isSingleLoop ? '已开启单句循环精听' : '已关闭单句循环'),
+                              content: Text(_isSingleLoop ? '🔂 已开启单句循环精听' : '➡️ 已切换为顺序连续朗读'),
                               duration: const Duration(seconds: 1),
                             ),
                           );
@@ -1279,28 +1522,54 @@ class _PlayerViewState extends State<PlayerView> {
     );
   }
 
-  Widget _buildClickableSentence(String sentence, bool isActive) {
+  // 构建卡拉OK逐词高亮的英文句子组件
+  Widget _buildKaraokeWords(String sentence, bool isLineActive) {
     final words = sentence.split(' ');
-    return RichText(
-      text: TextSpan(
-        children: words.map((word) {
-          return TextSpan(
-            text: '$word ',
-            style: TextStyle(
-              fontSize: 16.5,
-              height: 1.5,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-              color: isActive ? const Color(0xFF1D4ED8) : const Color(0xFF1E293B),
+    return Wrap(
+      spacing: 4,
+      runSpacing: 6,
+      children: List.generate(words.length, (wIdx) {
+        final wordText = words[wIdx];
+        // 判断当前单词是否正在被朗读
+        final bool isCurrentWord = isLineActive && _isPlaying && wIdx == _activeWordIndex;
+        // 判断当前单词是否已经被读过
+        final bool isPassedWord = isLineActive && _activeWordIndex > wIdx;
+
+        return GestureDetector(
+          onTap: () => _onWordTap(wordText),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: isCurrentWord
+                  ? const Color(0xFF2563EB)
+                  : isPassedWord
+                      ? const Color(0xFFDBEAFE)
+                      : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
             ),
-            recognizer: TapGestureRecognizer()..onTap = () => _onWordTap(word),
-          );
-        }).toList(),
-      ),
+            child: Text(
+              wordText,
+              style: TextStyle(
+                fontSize: 16.5,
+                fontWeight: isCurrentWord || isLineActive ? FontWeight.bold : FontWeight.w500,
+                color: isCurrentWord
+                    ? Colors.white
+                    : isPassedWord
+                        ? const Color(0xFF1D4ED8)
+                        : isLineActive
+                            ? const Color(0xFF1E3A8A)
+                            : const Color(0xFF1E293B),
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 }
 
-// ==================== 3. 生词本视图（支持点击单词发音） ====================
+// ==================== 3. 生词本视图 ====================
 class VocabularyListView extends StatelessWidget {
   final List<WordEntry> savedWords;
   final ValueChanged<String> onDeleteWord;
@@ -1313,6 +1582,8 @@ class VocabularyListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final FlutterTts tts = FlutterTts();
+
     return Column(
       children: [
         Container(
@@ -1393,7 +1664,11 @@ class VocabularyListView extends StatelessWidget {
                                     ),
                                     const SizedBox(width: 8),
                                     GestureDetector(
-                                      onTap: () => SpeechService.speak(item.word, rate: 0.9),
+                                      onTap: () async {
+                                        await tts.setLanguage("en-US");
+                                        await tts.setSpeechRate(0.42);
+                                        await tts.speak(item.word);
+                                      },
                                       child: Container(
                                         padding: const EdgeInsets.all(4),
                                         decoration: const BoxDecoration(
