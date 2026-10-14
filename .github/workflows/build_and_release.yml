@@ -2,7 +2,6 @@
 
 on:
   push:
-    branches: [ "main" ]
     tags: [ "v*" ]
   workflow_dispatch:
 
@@ -28,26 +27,28 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 4. 自动补全 Android 原生工程目录并拉取依赖
+      - name: 4. 生成 Android 工程并保护自定义源码与注入权限
         run: |
+          cp pubspec.yaml pubspec.yaml.bak
+          cp lib/main.dart main.dart.bak
           flutter create --platforms=android --org com.dreamknit.english .
+          mv pubspec.yaml.bak pubspec.yaml
+          mv main.dart.bak lib/main.dart
+          rm -rf test
+          # 注入 Android 网络权限与 Android 11+ TTS 语音服务查询权限
+          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>\n<queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>' android/app/src/main/AndroidManifest.xml
           flutter pub get
 
       - name: 5. 编译构建 Release APK 安装包
         run: flutter build apk --release
 
-      - name: 6. 上传 APK 到 Actions 产物 (Artifacts)
-        uses: actions/upload-artifact@v4
-        with:
-          name: daily-english-listening-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-
-      - name: 7. 自动发布到 GitHub Releases
+      - name: 6. 自动更新替换 GitHub Releases (v0.1.0)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.1.0
-          name: "v0.1.0 - 每日英语听力 MVP 首个安卓预览版"
+          name: "v0.1.0 - 每日英语听力 MVP 安卓版 (已修复语音与高保真UI)"
           body_path: CHANGELOG.md
           files: build/app/outputs/flutter-apk/app-release.apk
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

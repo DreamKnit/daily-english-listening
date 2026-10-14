@@ -1,7 +1,7 @@
 ﻿name: daily_english_listening
 description: A streamlined English listening practice app with bilingual synced subtitles and tap-to-translate.
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.1.0+2
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -9,7 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  audioplayers: ^6.0.0
+  flutter_tts: ^4.0.2
   shared_preferences: ^2.2.2
 
 dev_dependencies:
