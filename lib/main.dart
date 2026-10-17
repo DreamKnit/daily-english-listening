@@ -669,7 +669,7 @@ class ArticleListView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 顶部深蓝渐变 Header
+        // 首页标题与学习概览
         Container(
           width: double.infinity,
           decoration: const BoxDecoration(
@@ -683,7 +683,7 @@ class ArticleListView extends StatelessWidget {
             top: MediaQuery.of(context).padding.top + 16,
             left: 20,
             right: 20,
-            bottom: 20,
+            bottom: 22,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -698,15 +698,15 @@ class ArticleListView extends StatelessWidget {
                         '每日英语听力',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 22,
+                          fontSize: 24,
                           fontWeight: FontWeight.bold,
                           letterSpacing: -0.5,
                         ),
                       ),
                       SizedBox(height: 4),
                       Text(
-                        '支持逐词卡拉OK高亮 · 6档精准变速',
-                        style: TextStyle(color: Color(0xFFBFDBFE), fontSize: 12),
+                        '每天一点点，听懂更多英语',
+                        style: TextStyle(color: Color(0xFFDBEAFE), fontSize: 13),
                       ),
                     ],
                   ),
@@ -736,10 +736,11 @@ class ArticleListView extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  color: Colors.white.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.white.withOpacity(0.14)),
                 ),
                 child: Row(
                   children: [
@@ -763,9 +764,19 @@ class ArticleListView extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    '精选双语精听',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '开始今天的练习',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${articles.length} 篇课程 · 选择一篇开始精听',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                    ],
                   ),
                   GestureDetector(
                     onTap: onResetDefaults,
@@ -777,7 +788,33 @@ class ArticleListView extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              ...articles.map((article) => _buildArticleCard(context, article)),
+              if (articles.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.headphones_rounded, size: 38, color: Color(0xFF93C5FD)),
+                      const SizedBox(height: 10),
+                      const Text('还没有听力课程', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+                      const SizedBox(height: 4),
+                      const Text('添加一篇文章，开始你的第一次精听。', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                      const SizedBox(height: 14),
+                      OutlinedButton.icon(
+                        onPressed: () => _showAddArticleModal(context),
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('添加听力'),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ...articles.map((article) => _buildArticleCard(context, article)),
             ],
           ),
         ),
@@ -804,15 +841,16 @@ class ArticleListView extends StatelessWidget {
   }
 
   Widget _buildArticleCard(BuildContext context, Article article) {
-    return GestureDetector(
+    return InkWell(
       onTap: () => onSelectArticle(article),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE8EEF6)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.03),
@@ -828,8 +866,12 @@ class ArticleListView extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(14),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFEFF6FF), Color(0xFFDBEAFE)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(15),
               ),
               child: const Icon(Icons.play_arrow_rounded, color: Color(0xFF2563EB), size: 30),
             ),
@@ -840,6 +882,8 @@ class ArticleListView extends StatelessWidget {
                 children: [
                   Text(
                     article.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
@@ -887,9 +931,25 @@ class ArticleListView extends StatelessWidget {
               ),
             ),
             if (article.id.startsWith('custom_'))
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 18, color: Color(0xFF94A3B8)),
-                onPressed: () => onDeleteArticle(article.id),
+              PopupMenuButton<String>(
+                tooltip: '课程选项',
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFF94A3B8)),
+                onSelected: (value) {
+                  if (value == 'delete') onDeleteArticle(article.id);
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFDC2626)),
+                        SizedBox(width: 8),
+                        Text('删除课程'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
           ],
         ),
