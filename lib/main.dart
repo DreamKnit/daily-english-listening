@@ -267,23 +267,35 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   Future<void> _loadLocalData() async {
-    final prefs = await SharedPreferences.getInstance();
-    // 加载生词本
-    final rawWords = prefs.getString('saved_words_v2');
-    if (rawWords != null) {
-      final List decoded = jsonDecode(rawWords);
-      setState(() {
-        _savedWords = decoded.map((e) => WordEntry.fromJson(e)).toList();
-      });
-    }
-    // 加载课程列表（包含用户自己新增/导入的课程）
-    final rawArticles = prefs.getString('custom_articles_v2');
-    if (rawArticles != null) {
-      final List decoded = jsonDecode(rawArticles);
-      final loaded = decoded.map((e) => Article.fromJson(e)).toList();
-      if (loaded.isNotEmpty) {
-        setState(() => _articles = loaded);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawWords = prefs.getString('saved_words_v2');
+      final rawArticles = prefs.getString('custom_articles_v2');
+      if (!mounted) return;
+
+      if (rawWords != null) {
+        final decoded = jsonDecode(rawWords) as List;
+        setState(() {
+          _savedWords = decoded
+              .map((e) => WordEntry.fromJson(Map<String, dynamic>.from(e)))
+              .where((word) => word.word.isNotEmpty)
+              .toList();
+        });
       }
+      if (rawArticles != null) {
+        final decoded = jsonDecode(rawArticles) as List;
+        final loaded = decoded
+            .map((e) => Article.fromJson(Map<String, dynamic>.from(e)))
+            .where((article) => article.subtitles.any((line) => line.en.trim().isNotEmpty))
+            .toList();
+        if (loaded.isNotEmpty) {
+          setState(() => _articles = loaded);
+        }
+      }
+    } on FormatException {
+      // A damaged preference should not prevent the app from opening.
+    } on TypeError {
+      // Ignore entries written by an older or incompatible app version.
     }
   }
 
@@ -578,7 +590,12 @@ class ArticleListView extends StatelessWidget {
                           .map((e) => e.trim())
                           .where((e) => e.isNotEmpty)
                           .toList();
-                      if (rawLines.isEmpty) return;
+                      if (rawLines.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('请先输入至少一行英文内容。')),
+                        );
+                        return;
+                      }
 
                       final List<SubtitleLine> parsedSubtitles = [];
                       // 判断是否是中英交替行
@@ -598,14 +615,36 @@ class ArticleListView extends StatelessWidget {
                         }
                       }
 
+                      final englishSubtitles = parsedSubtitles
+                          .where((line) => line.en.trim().isNotEmpty)
+                          .toList();
+                      if (englishSubtitles.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('请至少提供一行英文字幕。')),
+                        );
+                        return;
+                      }
+
+                      final audioUrl = audioUrlCtrl.text.trim();
+                      final parsedAudioUrl = audioUrl.isEmpty ? null : Uri.tryParse(audioUrl);
+                      if (audioUrl.isNotEmpty &&
+                          (parsedAudioUrl == null ||
+                              !parsedAudioUrl.hasAuthority ||
+                              !['http', 'https'].contains(parsedAudioUrl.scheme))) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('音频地址需为有效的 HTTP 或 HTTPS 链接。')),
+                        );
+                        return;
+                      }
+
                       final newArt = Article(
                         id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
                         title: titleCtrl.text.trim().isEmpty ? 'Custom English Practice' : titleCtrl.text.trim(),
                         cnTitle: cnTitleCtrl.text.trim().isEmpty ? '自定义导入双语精听课程' : cnTitleCtrl.text.trim(),
                         category: categoryCtrl.text.trim().isEmpty ? '自定义' : categoryCtrl.text.trim(),
-                        level: '${parsedSubtitles.length} 句精听',
-                        customAudioUrl: audioUrlCtrl.text.trim().isEmpty ? null : audioUrlCtrl.text.trim(),
-                        subtitles: parsedSubtitles,
+                        level: '${englishSubtitles.length} 句精听',
+                        customAudioUrl: audioUrl,
+                        subtitles: englishSubtitles,
                       );
 
                       onAddArticle(newArt);
