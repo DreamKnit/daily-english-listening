@@ -34,7 +34,6 @@ jobs:
           flutter create --platforms=android --org com.dreamknit.english .
           mv pubspec.yaml.bak pubspec.yaml
           mv main.dart.bak lib/main.dart
-          rm -rf test
           # 注入 Android 网络权限与 Android 11+ TTS 语音服务查询权限
           sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>\n<queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>' android/app/src/main/AndroidManifest.xml
           flutter pub get
@@ -42,13 +41,12 @@ jobs:
       - name: 5. 编译构建 Release APK 安装包
         run: flutter build apk --release
 
-      - name: 6. 自动更新替换 GitHub Releases (v0.1.0)
+      - name: 6. 发布 APK 到当前版本 Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0
-          name: "v0.1.0 - 每日英语听力 MVP 安卓版 (已修复语音与高保真UI)"
+          tag_name: ${{ github.ref_name }}
+          name: "每日英语听力 ${{ github.ref_name }}"
           body_path: CHANGELOG.md
           files: build/app/outputs/flutter-apk/app-release.apk
-          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
